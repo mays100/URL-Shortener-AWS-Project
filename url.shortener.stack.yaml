@@ -1,0 +1,357 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: AWS CloudFormation Template for a Serverless URL Shortener with CloudFront, Logging, and Monitoring.
+
+Parameters:
+  # Parameter for the S3 Frontend Bucket Name
+  FrontendBucketName:
+    Type: String
+    Description: Name for the S3 bucket hosting the frontend website. Must be globally unique.
+    Default: url-shortener-frontend-maysabag-iac-2025 
+
+  # Parameter for the S3 Logging Bucket Name
+  LoggingBucketName:
+    Type: String
+    Description: Name for the S3 bucket to store CloudFront access logs. Must be globally unique.
+    Default: url-shortener-logs-maysabag-iac-2025 
+
+  # Parameter for the DynamoDB Table Name
+  DynamoDBTableName:
+    Type: String
+    Description: Name for the DynamoDB table to store short URLs.
+    Default: ShortUrlsIaC # User should adjust if ShortUrls already exists
+
+  # Parameter for the Lambda Function Name
+  LambdaFunctionName:
+    Type: String
+    Description: Name for the Lambda function.
+    Default: URLShortenerLambdaIaC # User should adjust if URLShortenerLambda already exists
+
+  # Parameter for the Lambda Function URL Auth Type
+  LambdaFunctionURLAuthType:
+    Type: String
+    Description: Authentication type for the Lambda Function URL.
+    Default: NONE
+    AllowedValues:
+      - NONE
+      - AWS_IAM
+
+  # Parameter for the Lambda Function URL CORS Origin
+  LambdaFunctionURLCorsOrigin:
+    Type: String
+    Description: CORS Allow-Origin header for the Lambda Function URL. Use '*' for all origins.
+    Default: '*'
+
+Resources:
+  # IAM Role for Lambda Function
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole # Allows Lambda to write logs to CloudWatch
+      Policies:
+        - PolicyName: DynamoDBAccessPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:GetItem
+                Resource: !GetAtt DynamoDBTable.Arn # Grants access to the specific DynamoDB table created by this stack
+
+  # DynamoDB Table
+  DynamoDBTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref DynamoDBTableName
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST # Use On-Demand billing for cost-effectiveness
+
+  # Lambda Function
+  LambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Ref LambdaFunctionName
+      Handler: index.lambda_handler # Assumes your Python file is named index.py
+      Runtime: python3.9 # Or python3.13 if available and preferred
+      Role: !GetAtt LambdaExecutionRole.Arn
+      MemorySize: 128
+      Timeout: 30 # Increased timeout for potential network delays
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref DynamoDBTableName # Pass DynamoDB table name to Lambda
+      Code:
+        # This is a placeholder. You will need to upload your lambda_function.py
+        # as a ZIP file to an S3 bucket and specify its location here, OR
+        # manually upload the code after the stack is created.
+        # For simplicity in CloudFormation, we often use S3 for code.
+        # Example if code is in an S3 bucket:
+        # S3Bucket: your-code-bucket-name
+        # S3Key: lambda_function.zip
+        #
+        # For this exercise, you might deploy the stack first, then manually
+        # upload the code to the Lambda function created by CloudFormation.
+        # Or, include a placeholder ZIP for initial deployment and update later.
+        #
+        # For now, we'll use a dummy inline code to allow stack creation.
+        # You will replace this with your actual code AFTER CloudFormation creates the function.
+        ZipFile: |
+          import json
+          import os
+          import boto3
+          import random
+          import string
+          from urllib.parse import urlparse
+
+          dynamodb = boto3.resource('dynamodb')
+          TABLE_NAME = os.environ.get('TABLE_NAME', 'ShortUrlsIaC') # Default matches parameter
+          table = dynamodb.Table(TABLE_NAME)
+
+          def generate_short_id(length=6):
+              characters = string.ascii_letters + string.digits
+              return ''.join(random.choice(characters) for i in range(length))
+
+          def is_valid_url(url):
+              try:
+                  result = urlparse(url)
+                  return all([result.scheme, result.netloc])
+              except ValueError:
+                  return False
+
+          def shorten_url(event_body):
+              try:
+                  body = json.loads(event_body)
+                  long_url = body.get('url')
+                  if not long_url:
+                      return { 'statusCode': 400, 'headers': { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }, 'body': json.dumps({ 'message': 'Missing URL in request body.' }) }
+                  if not long_url.startswith('http://') and not long_url.startswith('https://'):
+                      long_url = 'https://' + long_url
+                  if not is_valid_url(long_url):
+                      return { 'statusCode': 400, 'headers': { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }, 'body': json.dumps({ 'message': 'Invalid URL format.' }) }
+                  short_id = generate_short_id()
+                  table.put_item(Item={ 'id': short_id, 'url': long_url })
+                  return { 'statusCode': 200, 'headers': { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }, 'body': json.dumps({ 'short_id': short_id }) }
+              except json.JSONDecodeError:
+                  return { 'statusCode': 400, 'headers': { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }, 'body': json.dumps({ 'message': 'Invalid JSON in request body.' }) }
+              except Exception as e:
+                  print(f"Error shortening URL: {e}")
+                  return { 'statusCode': 500, 'headers': { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }, 'body': json.dumps({ 'message': 'Internal server error.' }) }
+
+          def redirect_url(path):
+              short_id = path.lstrip('/')
+              if not short_id:
+                  return { 'statusCode': 400, 'headers': { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }, 'body': json.dumps({ 'message': 'Missing short ID in path.' }) }
+              try:
+                  response = table.get_item(Key={ 'id': short_id })
+                  item = response.get('Item')
+                  if item and 'url' in item:
+                      long_url = item['url']
+                      return { 'statusCode': 302, 'headers': { 'Location': long_url, 'Access-Control-Allow-Origin': '*' }, 'body': '' }
+                  else:
+                      return { 'statusCode': 404, 'headers': { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }, 'body': json.dumps({ 'message': 'Short URL not found.' }) }
+              except Exception as e:
+                  print(f"Error redirecting URL: {e}")
+                  return { 'statusCode': 500, 'headers': { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }, 'body': json.dumps({ 'message': 'Internal server error.' }) }
+
+          def lambda_handler(event, context):
+              print(f"Received event: {json.dumps(event, indent=2)}")
+              http_method = event.get('requestContext', {}).get('http', {}).get('method')
+              path = event.get('rawPath')
+              if http_method == 'POST' and path == '/':
+                  return shorten_url(event.get('body'))
+              elif http_method == 'GET' and path != '/':
+                  return redirect_url(path)
+              else:
+                  return { 'statusCode': 405, 'headers': { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }, 'body': json.dumps({ 'message': 'Method Not Allowed or Invalid Path' }) }
+
+  # Lambda Function URL
+  LambdaFunctionURL:
+    Type: AWS::Lambda::Url
+    Properties:
+      TargetFunctionArn: !GetAtt LambdaFunction.Arn
+      AuthType: !Ref LambdaFunctionURLAuthType
+      Cors:
+        AllowOrigins:
+          - !Ref LambdaFunctionURLCorsOrigin
+        AllowMethods:
+          - GET
+          - POST
+          - OPTIONS # Required for preflight requests
+        AllowHeaders:
+          - Content-Type
+          - X-Amz-Date
+          - Authorization
+
+  # S3 Bucket for Frontend Website
+  FrontendBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref FrontendBucketName
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: index.html # Pointing to index.html for simplicity, can be a custom error page
+    DeletionPolicy: Retain # Retain the bucket even if the stack is deleted
+
+  # S3 Bucket Policy for Frontend Bucket (to allow public read access)
+  FrontendBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FrontendBucketName
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: '*'
+            Action:
+              - s3:GetObject
+            Resource: !Join ['', ['arn:aws:s3:::', !Ref FrontendBucketName, '/*']]
+
+  # S3 Bucket for CloudFront Access Logs
+  LoggingBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref LoggingBucketName
+      # Best practice for logging buckets: no public access
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+    DeletionPolicy: Retain # Retain the logging bucket even if the stack is deleted
+
+  # CloudFront Distribution
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: CloudFront distribution for the URL Shortener frontend
+        DefaultCacheBehavior:
+          TargetOriginId: !Ref FrontendBucketName
+          ViewerProtocolPolicy: redirect-to-https # Always use HTTPS
+          AllowedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          CachedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          ForwardedValues:
+            QueryString: true # Forward query strings (important for future features if any)
+            Cookies:
+              Forward: none
+          Compress: true
+        Origins:
+          - Id: !Ref FrontendBucketName
+            DomainName: !GetAtt FrontendBucket.RegionalDomainName # Use RegionalDomainName for S3 origin
+            S3OriginConfig: {} # Required for S3 origins
+        # Enable logging for CloudFront
+        Logging:
+          Bucket: !GetAtt LoggingBucket.DomainName # Point to the logging bucket
+          IncludeCookies: false
+          Prefix: cloudfront-logs/ # Optional prefix for log files
+
+  # CloudWatch Alarms for Lambda Errors
+  LambdaErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${LambdaFunctionName}-Error-Alarm"
+      AlarmDescription: "Alarm for Lambda function errors"
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref LambdaFunction
+      Statistic: Sum
+      Period: 300 # 5 minutes
+      EvaluationPeriods: 1
+      Threshold: 0 # Trigger if errors > 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching # Treat missing data as not breaching the threshold
+      # You can add SNS topics here to send notifications
+      # AlarmActions:
+      #   - !Ref MySnsTopic
+
+  # CloudWatch Alarms for CloudFront 4xx Errors
+  CloudFront4xxErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${CloudFrontDistribution}-4xx-Error-Alarm"
+      AlarmDescription: "Alarm for CloudFront 4xx errors (client errors)"
+      Namespace: AWS/CloudFront
+      MetricName: 4xxErrorRate
+      Dimensions:
+        - Name: DistributionId
+          Value: !Ref CloudFrontDistribution
+        - Name: Region
+          Value: Global # CloudFront metrics are global
+      Statistic: Average
+      Period: 300 # 5 minutes
+      EvaluationPeriods: 1
+      Threshold: 0 # Trigger if 4xx error rate > 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      # AlarmActions:
+      #   - !Ref MySnsTopic
+
+  # CloudWatch Alarms for CloudFront 5xx Errors
+  CloudFront5xxErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${CloudFrontDistribution}-5xx-Error-Alarm"
+      AlarmDescription: "Alarm for CloudFront 5xx errors (server errors)"
+      Namespace: AWS/CloudFront
+      MetricName: 5xxErrorRate
+      Dimensions:
+        - Name: DistributionId
+          Value: !Ref CloudFrontDistribution
+        - Name: Region
+          Value: Global
+      Statistic: Average
+      Period: 300 # 5 minutes
+      EvaluationPeriods: 1
+      Threshold: 0 # Trigger if 5xx error rate > 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      # AlarmActions:
+      #   - !Ref MySnsTopic
+
+Outputs:
+  # Output the CloudFront Distribution Domain Name
+  CloudFrontDomainName:
+    Description: The domain name of the CloudFront distribution for the frontend.
+    Value: !GetAtt CloudFrontDistribution.DomainName
+    Export:
+      Name: URLShortenerCloudFrontDomainName
+
+  # Output the Lambda Function URL (for frontend configuration)
+  LambdaFunctionUrlOutput:
+    Description: The URL of the Lambda function.
+    Value: !GetAtt LambdaFunctionURL.FunctionUrl
+    Export:
+      Name: URLShortenerLambdaFunctionUrl
+
+  # Output the Frontend S3 Bucket Name
+  FrontendS3Bucket:
+    Description: The S3 bucket name for the frontend website.
+    Value: !Ref FrontendBucketName
+    Export:
+      Name: URLShortenerFrontendS3Bucket
