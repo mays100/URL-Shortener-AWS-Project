@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>URL Shortener</title>
+  <meta charset="UTF-8">
+</head>
+<body>
+  <h1>URL Shortener</h1>
+
+  <input type="text" id="longUrl" placeholder="Enter long URL" size="50">
+  <button onclick="shortenUrl()">Shorten</button>
+
+  <p id="result"></p>
+
+  <script>
+    const LAMBDA_FUNCTION_URL = "https://lyesyk2adxv44ubxf43ucohcee0zwjzq.lambda-url.us-west-2.on.aws"; // 🔁 Replace with your real Lambda Function URL
+
+    async function shortenUrl() {
+      const longUrl = document.getElementById("longUrl").value;
+
+      const response = await fetch(`${LAMBDA_URL}/shorten`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: longUrl }),
+      });
+
+      const shortId = await response.text();  // assuming response is just short ID string
+      document.getElementById("result").innerHTML =
+        `Short URL: <a href="${LAMBDA_URL}/${shortId}" target="_blank">${LAMBDA_URL}/${shortId}</a>`;
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="he">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>מקצר כתובות פשוט</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            direction: rtl; /* Set text direction to Right-to-Left for Hebrew */
+            text-align: right; /* Align text to the right */
+        }
+        /* Custom styles for better RTL layout if needed */
+        .flex-row-reverse {
+            flex-direction: row-reverse;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
+    <div class="bg-white p-8 rounded-lg shadow-xl w-full max-w-md">
+        <h1 class="text-3xl font-bold text-gray-800 mb-6 text-center">מקצר כתובות פשוט</h1>
+
+        <div class="mb-4">
+            <label for="longUrl" class="block text-gray-700 text-sm font-semibold mb-2">הזן כתובת URL ארוכה:</label>
+            <input type="url" id="longUrl" placeholder="https://example.com/very/long/url"
+                   class="shadow-sm appearance-none border rounded-lg w-full py-3 px-4 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-200"
+                   required>
+        </div>
+
+        <button id="shortenBtn"
+                class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 transition duration-200 ease-in-out transform hover:scale-105">
+            קצר כתובת URL
+        </button>
+
+        <div id="resultContainer" class="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg hidden">
+            <p class="text-blue-800 text-sm font-semibold mb-2">הקישור המקוצר שלך:</p>
+            <div class="flex items-center justify-between bg-blue-100 border border-blue-300 rounded-lg p-3">
+                <a id="shortUrlDisplay" href="#" target="_blank" class="text-blue-700 hover:underline text-lg font-medium break-all mr-2"></a>
+                <button id="copyBtn"
+                        class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-3 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 transition duration-200 ease-in-out">
+                    העתק
+                </button>
+            </div>
+            <p id="copyMessage" class="text-green-600 text-sm mt-2 hidden text-center">הועתק בהצלחה!</p>
+        </div>
+
+        <p id="errorMessage" class="text-red-600 text-sm mt-4 hidden text-center"></p>
+        <p id="loadingMessage" class="text-gray-600 text-sm mt-4 hidden text-center">מקצר כתובת...</p>
+    </div>
+
+    <script>
+        // REPLACE THIS WITH YOUR ACTUAL LAMBDA FUNCTION URL
+        const LAMBDA_FUNCTION_URL = 'https://fbpdqtygr3bgmdtchevjiozl4u0lrioo.lambda-url.us-west-2.on.aws/'; // e.g., https://xxxxxxxxxxxx.lambda-url.us-east-1.on.aws/
+
+        const longUrlInput = document.getElementById('longUrl');
+        const shortenBtn = document.getElementById('shortenBtn');
+        const resultContainer = document.getElementById('resultContainer');
+        const shortUrlDisplay = document.getElementById('shortUrlDisplay');
+        const copyBtn = document.getElementById('copyBtn');
+        const copyMessage = document.getElementById('copyMessage');
+        const errorMessage = document.getElementById('errorMessage');
+        const loadingMessage = document.getElementById('loadingMessage');
+
+        shortenBtn.addEventListener('click', async () => {
+            const longUrl = longUrlInput.value.trim();
+            if (!longUrl) {
+                displayMessage(errorMessage, 'אנא הזן כתובת URL.', 'error');
+                return;
+            }
+
+            displayMessage(errorMessage, '', 'hide'); // Clear previous errors
+            displayMessage(resultContainer, '', 'hide'); // Hide previous results
+            displayMessage(loadingMessage, 'מקצר כתובת...', 'show'); // Show loading message
+
+            try {
+                const response = await fetch(LAMBDA_FUNCTION_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ url: longUrl })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    const shortId = data.short_id;
+                    const fullShortUrl = `${LAMBDA_FUNCTION_URL}${shortId}`; // Construct full short URL
+                    shortUrlDisplay.href = fullShortUrl;
+                    shortUrlDisplay.textContent = fullShortUrl;
+                    displayMessage(resultContainer, '', 'show');
+                } else {
+                    displayMessage(errorMessage, data.message || 'שגיאה בקיצור הכתובת.', 'error');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                displayMessage(errorMessage, 'שגיאה בתקשורת עם השרת. אנא נסה שוב.', 'error');
+            } finally {
+                displayMessage(loadingMessage, '', 'hide'); // Hide loading message
+            }
+        });
+
+        copyBtn.addEventListener('click', () => {
+            const textToCopy = shortUrlDisplay.textContent;
+            const tempInput = document.createElement('textarea');
+            tempInput.value = textToCopy;
+            document.body.appendChild(tempInput);
+            tempInput.select();
+            document.execCommand('copy');
+            document.body.removeChild(tempInput);
+
+            displayMessage(copyMessage, 'הועתק בהצלחה!', 'show');
+            setTimeout(() => {
+                displayMessage(copyMessage, '', 'hide');
+            }, 2000);
+        });
+
+        function displayMessage(element, message, type) {
+            element.textContent = message;
+            if (type === 'show') {
+                element.classList.remove('hidden');
+            } else if (type === 'hide') {
+                element.classList.add('hidden');
+            } else if (type === 'error') {
+                element.classList.remove('hidden');
+                element.classList.add('text-red-600');
+            }
+        }
+    </script>
+</body>
+</html>
