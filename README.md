@@ -265,3 +265,143 @@ GitHub_New_Repo_Files_Uploaded_Final.png
 Git_Push_README_Success.png
 
 GitHub_Repo_With_README.png
+
+פתרון מגבלות סביבת Sandbox
+במהלך פיתוח הפרויקט בסביבת ה-Sandbox, נתקלנו במגבלות הרשאה מסוימות, כגון חוסר יכולת ליצור או לשנות מדיניות IAM באופן ישיר. התמודדנו עם מגבלות אלו באופן יצירתי:
+
+שימוש ב-LabRole קיים: במקום ליצור תפקידי IAM מותאמים אישית, השתמשנו בתפקיד ה-LabRole הקיים עבור פונקציית ה-Lambda.
+
+אישור IAM ב-CloudFormation: בתבנית ה-CloudFormation, אישרנו במפורש את היכולת של CloudFormation ליצור משאבי IAM (כמו תפקיד הביצוע של Lambda) עם שמות מותאמים אישית, מה שאפשר את פריסת התשתית למרות מגבלות ה-Sandbox.
+
+התמודדות עם שגיאות CORS: שגיאות CORS (Cross-Origin Resource Sharing) היוו אתגר משמעותי. הן נפתרו על ידי הגדרה מדויקת של כותרות CORS ב-Function URL של Lambda, וכן על ידי הבטחת סנכרון נכון של קובץ ה-index.html עם ה-URL המעודכן של Lambda.
+
+אתגר ניטור מתקדם: שילוב Grafana או Prometheus
+כאתגר מתקדם, נבחן כיצד ניתן לשלב את Grafana או Prometheus כדי לדמיין מדדים מ-Lambda ומ-CloudFront.
+
+הצעת אינטגרציה:
+איסוף מדדים מ-CloudWatch:
+
+CloudWatch Metrics: גם Lambda וגם CloudFront שולחים מדדים אוטומטית ל-CloudWatch (לדוגמה, Errors, Invocations עבור Lambda; 4xxErrorRate, 5xxErrorRate, Requests עבור CloudFront).
+
+CloudWatch Logs: ניתן גם לנתח לוגים מ-S3 (יומני גישה של CloudFront) או מ-CloudWatch Logs (יומני Lambda) כדי לחלץ מדדים מותאמים אישית.
+
+הזנת מדדים ל-Grafana או Prometheus:
+
+Grafana: Grafana תומכת בחיבור ישיר ל-CloudWatch כמקור נתונים. ניתן להגדיר Dashboards ב-Grafana שיציגו גרפים ונתונים בזמן אמת ממדדי ה-CloudWatch של Lambda ו-CloudFront.
+
+Prometheus: כדי לשלב את Prometheus, נצטרך "exporter" שימשוך נתונים מ-CloudWatch ויחשוף אותם בפורמט ש-Prometheus יכולה לצרוך. לדוגמה, cloudwatch_exporter יכול לשלוף מדדים מ-CloudWatch ולהפוך אותם לזמינים עבור Prometheus.
+
+תרחיש תיאורטי:
+היינו מקימים שרת Grafana (לדוגמה, על EC2 Instance) ומחברים אותו ל-CloudWatch באמצעות ה-AWS SDK ו-IAM Role מתאים. ב-Grafana, היינו יוצרים Dashboard עם פאנלים המציגים:
+
+מספר קריאות ל-Lambda.
+
+שיעור שגיאות Lambda.
+
+שיעור שגיאות 4xx ו-5xx ב-CloudFront.
+
+כמות בקשות ל-CloudFront.
+זה יאפשר ניטור ויזואלי של ביצועי המערכת ובריאותה.
+
+שרטוט ארכיטקטורה (רמה גבוהה)
+[כאן יש להוסיף דיאגרמת ארכיטקטורה של המערכת שבניתם ב-AWS Sandbox.]
+
+הוראות ליצירת הדיאגרמה:
+
+השתמשו בכלי כמו draw.io, Lucidchart, Miro, או אפילו PowerPoint/Google Slides.
+
+כללו את כל השירותים הבאים:
+
+משתמש (User)
+
+Amazon CloudFront (מצביע על S3 Frontend)
+
+Amazon S3 (Bucket עבור Frontend)
+
+AWS Lambda (פונקציית ה-URL Shortener)
+
+Lambda Function URL (החיבור בין Frontend ל-Lambda)
+
+Amazon DynamoDB (טבלת ShortUrls)
+
+Amazon S3 (Bucket עבור CloudFront Logs)
+
+Amazon CloudWatch (עבור מדדים ואזעקות של Lambda ו-CloudFront)
+
+השתמשו באייקונים הרשמיים של AWS במידת האפשר.
+
+ציירו קווים המחברים בין השירותים כדי להראות את זרימת הנתונים והתקשורת (לדוגמה: משתמש -> CloudFront -> S3, Frontend -> Lambda Function URL -> Lambda -> DynamoDB).
+
+הדגשת התאמות ל-Sandbox: ציינו באופן ויזואלי או בטקסט קצר ליד הדיאגרמה אם היו התאמות ספציפיות בגלל מגבלות ה-Sandbox (לדוגמה, אם הייתם צריכים להשתמש ב-LabRole ספציפי).
+
+לאחר יצירת הדיאגרמה, שמרו אותה כקובץ תמונה (לדוגמה, architecture_sandbox.png) בתיקיית screenshots של הפרויקט.
+
+כדי להציג את הדיאגרמה ב-README.md, החליפו את השורה [כאן יש להוסיף דיאגרמת ארכיטקטורה של המערכת שבניתם ב-AWS Sandbox.] בשורה הבאה:
+![שרטוט ארכיטקטורה בסביבת Sandbox](screenshots/architecture_sandbox.png)
+
+שירותים לכלול בדיאגרמה:
+
+S3 (Frontend Bucket)
+
+Lambda (עם Function URL)
+
+DynamoDB
+
+CloudFront
+
+CloudWatch (כולל Alarms)
+
+S3 Logging Bucket
+
+הדגשת התאמות ל-Sandbox: יש לציין בדיאגרמה (או בתיאור מתחתיה) כל התאמה שנעשתה עקב מגבלות ה-Sandbox (לדוגמה, שימוש ב-LabRole קיים).
+
+ארכיטקטורה מלאה ללא מגבלות Sandbox (בונוס) (screenshots/architecture_full.png)
+אם הייתה לנו גישה מלאה ל-AWS, היינו משפרים את הארכיטקטורה באופן הבא:
+
+ניהול דומיינים מותאמים אישית: שימוש ב-Route 53 לניהול דומיין מותאם אישית (לדוגמה, short.yourdomain.com) והצמדתו ל-CloudFront Distribution.
+
+אבטחה משופרת: הוספת AWS WAF (Web Application Firewall) מול CloudFront כדי להגן מפני מתקפות נפוצות (כגון SQL Injection, Cross-Site Scripting).
+
+אופטימיזציה של Lambda: שיפור הגדרות ה-Scaling של Lambda (לדוגמה, Provisioned Concurrency לזמני תגובה מהירים יותר).
+
+סביבות נפרדות: הקמת סביבות Staging ו-Production נפרדות באמצעות CloudFormation Stacks נפרדים, כדי לאפשר בדיקות בטוחות לפני פריסה לייצור.
+
+[כאן יש להוסיף דיאגרמת ארכיטקטורה משופרת ללא מגבלות Sandbox.]
+
+הוראות ליצירת הדיאגרמה:
+
+השתמשו באותו כלי ליצירת דיאגרמות.
+
+כללו את כל השירותים מהדיאגרמה הקודמת, בתוספת:
+
+Amazon Route 53 (לניהול דומיין מותאם אישית)
+
+AWS WAF (מול CloudFront)
+
+סביבות Staging/Production נפרדות (ניתן להציג זאת על ידי שכפול חלק מהארכיטקטורה או שימוש בתיבות/צבעים שונים).
+
+שיפורי Lambda Scaling (ניתן לציין בטקסט או להוסיף אלמנט קטן המציין זאת).
+
+הדגישו את השיפורים הללו בדיאגרמה.
+
+לאחר יצירת הדיאגרמה, שמרו אותה כקובץ תמונה (לדוגמה, architecture_full.png) בתיקיית screenshots של הפרויקט.
+
+כדי להציג את הדיאגרמה ב-README.md, החליפו את השורה [כאן יש להוסיף דיאגרמת ארכיטקטורה משופרת ללא מגבלות Sandbox.] בשורה הבאה:
+![ארכיטקטורה מלאה ללא מגבלות Sandbox](screenshots/architecture_full.png)
+
+אתגר טכני שנתקלתי בו
+במהלך הפרויקט, נתקלתי באתגר טכני משמעותי עם שגיאות CORS (Cross-Origin Resource Sharing).
+
+תיאור האתגר: כאשר ניסיתי לשלוח בקשות מה-Frontend (המאוחסן ב-S3) לפונקציית ה-Lambda, הדפדפן חסם את הבקשות עם הודעת שגיאה "No 'Access-Control-Allow-Origin' header is present". זה קרה למרות שהגדרתי את ה-CORS ב-Function URL של Lambda. הבעיה נבעה מכך שהדפדפן שולח בקשת "preflight" (OPTIONS) לפני הבקשה העיקרית, ודורש כותרות CORS בתגובה לבקשה זו.
+
+איך התגברתי עליו:
+
+בדיקה חוזרת של הגדרות CORS ב-Lambda Function URL: ודאתי ש-Allow origins מוגדר ל-* (כוכבית), וכי Allow methods כולל OPTIONS בנוסף ל-GET ו-POST.
+
+אימות כותרות: ודאתי שגם Allow headers כולל Content-Type, X-Amz-Date, ו-Authorization.
+
+רענון קאש הדפדפן: ביצעתי רענון חזק לדף (Ctrl+F5 / Cmd+Shift+R) כדי לוודא שהדפדפן לא משתמש בגרסה שמורה בקאש.
+
+בדיקה ב-Network Tab: השתמשתי בלשונית "Network" בכלי המפתחים של הדפדפן כדי לראות את התגובה המלאה מה-Lambda ולזהות בדיוק אילו כותרות חסרות או שגויות.
+
+מה הייתי עושה אחרת בפעם הבאה: הייתי מתחילה את אבחון בעיות ה-CORS ישירות בלשונית "Network" בכלי המפתחים, מכיוון שהיא מספקת את המידע המדויק ביותר על הבקשות והתגובות, ומאפשרת לזהות במהירות את הכותרות החסרות. כמו כן, הייתי מוודאת שפקודת OPTIONS כלולה ב-AllowMethods מההתחלה.
